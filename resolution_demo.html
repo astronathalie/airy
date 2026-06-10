@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Resolving two point sources</title>
+<style>
+  :root{
+    --bg:#ffffff; --txt:#2C2C2A; --muted:#5F5E5A; --hint:#888780;
+    --border:rgba(0,0,0,0.15);
+    --ok-bg:#E1F5EE; --ok-tx:#0F6E56;
+    --warn-bg:#FAEEDA; --warn-tx:#854F0B;
+    --bad-bg:#FCEBEB; --bad-tx:#A32D2D;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#1a1a18; --txt:#F1EFE8; --muted:#B4B2A9; --hint:#888780;
+      --border:rgba(255,255,255,0.18);
+      --ok-bg:#085041; --ok-tx:#9FE1CB;
+      --warn-bg:#633806; --warn-tx:#FAC775;
+      --bad-bg:#791F1F; --bad-tx:#F7C1C1;
+    }
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    display:flex; align-items:center; justify-content:center; min-height:100vh; padding:2rem;
+  }
+  .wrap{width:min(760px,100%);}
+  h1{font-size:20px; font-weight:500; margin:0 0 1.5rem; text-align:center;}
+  .ctl{display:flex; align-items:center; gap:14px; margin:0 0 1.5rem;}
+  .ctl label{font-size:15px; color:var(--muted); min-width:90px;}
+  input[type=range]{flex:1; height:4px; accent-color:#1D9E75; cursor:pointer;}
+  .out{font-size:15px; font-weight:500; min-width:80px; text-align:right;}
+  #status{font-size:15px; font-weight:500; margin:0 0 1rem; padding:10px 12px; border-radius:8px; text-align:center;}
+  svg{display:block; width:100%; height:auto; overflow:visible;}
+  .foot{display:flex; justify-content:space-between; font-size:13px; color:var(--hint); padding:6px 4px 0;}
+  .legend{display:flex; gap:20px; justify-content:center; font-size:13px; color:var(--muted); margin-top:1rem; flex-wrap:wrap;}
+  .legend span{display:inline-flex; align-items:center; gap:6px;}
+  .swatch{width:18px; height:0; border-top-width:2.5px; border-top-style:solid;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Resolving two point sources</h1>
+
+  <div class="ctl">
+    <label for="sep">separation</label>
+    <input type="range" id="sep" min="0" max="100" value="70" step="1">
+    <span class="out" id="sep-out">1.40 λ/D</span>
+  </div>
+
+  <div id="status">resolved</div>
+
+  <svg id="plot" viewBox="0 0 660 300" role="img" aria-label="combined diffraction profile of two point sources">
+    <title>combined diffraction profile of two point sources</title>
+  </svg>
+
+  <div class="foot">
+    <span>two sources summed on the detector</span>
+    <span id="dip-label">central dip: 26%</span>
+  </div>
+
+  <div class="legend">
+    <span><span class="swatch" style="border-top-color:#378ADD; border-top-style:dashed;"></span>source A</span>
+    <span><span class="swatch" style="border-top-color:#D85A30; border-top-style:dashed;"></span>source B</span>
+    <span><span class="swatch" style="border-top-color:#1D9E75;"></span>what the detector sees (sum)</span>
+  </div>
+</div>
+
+<script>
+(function(){
+  var sepEl=document.getElementById('sep');
+  var sepOut=document.getElementById('sep-out');
+  var status=document.getElementById('status');
+  var dipLabel=document.getElementById('dip-label');
+  var svg=document.getElementById('plot');
+  var SVGNS='http://www.w3.org/2000/svg';
+
+  var W=660,H=300,pad=30,top=24,baseY=H-36,cx=W/2;
+  var scale=(W-2*pad)/3.0, Hpx=baseY-top;
+  var BLUE='#378ADD',CORAL='#D85A30',TEAL='#1D9E75';
+
+  function airy(x){var s=0.42;return Math.exp(-(x*x)/(2*s*s));}
+
+  function mk(tag,attrs){var e=document.createElementNS(SVGNS,tag);for(var k in attrs)e.setAttribute(k,attrs[k]);return e;}
+
+  function draw(){
+    var keep=svg.querySelector('title');
+    svg.innerHTML=''; if(keep) svg.appendChild(keep);
+
+    var sepU=(sepEl.value/100)*2.0;
+    sepOut.textContent=sepU.toFixed(2)+' λ/D';
+    var x1=-sepU/2,x2=sepU/2,N=200;
+    var us=[],y1=[],y2=[],s=[],mx=0;
+    for(var i=0;i<=N;i++){
+      var u=-1.5+3.0*(i/N);
+      var a=airy(u-x1),b=airy(u-x2);
+      us.push(u);y1.push(a);y2.push(b);s.push(a+b);
+      if(a+b>mx)mx=a+b;
+    }
+    var px=function(u){return cx+u*scale;}, py=function(v){return baseY-(v/mx)*Hpx;};
+    var cs=getComputedStyle(document.documentElement);
+    var border=cs.getPropertyValue('--border').trim()||'rgba(0,0,0,0.15)';
+
+    svg.appendChild(mk('line',{x1:pad,y1:baseY,x2:W-pad,y2:baseY,stroke:border,'stroke-width':1}));
+
+    function d(arr){var p='';for(var i=0;i<=N;i++){p+=(i?'L':'M')+px(us[i]).toFixed(1)+' '+py(arr[i]).toFixed(1)+' ';}return p;}
+
+    var fill=d(s)+'L'+px(us[N]).toFixed(1)+' '+baseY+' L'+px(us[0]).toFixed(1)+' '+baseY+' Z';
+    svg.appendChild(mk('path',{d:fill,fill:'rgba(29,158,117,0.13)'}));
+    svg.appendChild(mk('path',{d:d(y1),fill:'none',stroke:BLUE,'stroke-width':1.5,'stroke-dasharray':'4 4'}));
+    svg.appendChild(mk('path',{d:d(y2),fill:'none',stroke:CORAL,'stroke-width':1.5,'stroke-dasharray':'4 4'}));
+    svg.appendChild(mk('path',{d:d(s),fill:'none',stroke:TEAL,'stroke-width':2.6}));
+    svg.appendChild(mk('line',{x1:px(x1),y1:baseY,x2:px(x1),y2:baseY+8,stroke:BLUE,'stroke-width':1.6}));
+    svg.appendChild(mk('line',{x1:px(x2),y1:baseY,x2:px(x2),y2:baseY+8,stroke:CORAL,'stroke-width':1.6}));
+
+    var mid=airy(-x1)+airy(-x2),peak=0;
+    for(var j=0;j<=N;j++)if(s[j]>peak)peak=s[j];
+    var dip=peak>0?(peak-mid)/peak:0;
+    var resolved=mid<peak-1e-3 && sepU>0.02, rayleigh=sepU>=1.0;
+
+    if(resolved){
+      status.textContent=rayleigh?'resolved — two clear peaks':'marginally resolved — shallow dip';
+      status.style.background=rayleigh?'var(--ok-bg)':'var(--warn-bg)';
+      status.style.color=rayleigh?'var(--ok-tx)':'var(--warn-tx)';
+      dipLabel.textContent='central dip: '+Math.round(dip*100)+'%';
+    }else{
+      status.textContent='unresolved — merged into one blob';
+      status.style.background='var(--bad-bg)';
+      status.style.color='var(--bad-tx)';
+      dipLabel.textContent='central dip: none';
+    }
+  }
+  sepEl.addEventListener('input',draw);
+  draw();
+})();
+</script>
+</body>
+</html>
